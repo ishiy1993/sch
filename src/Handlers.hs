@@ -1,5 +1,5 @@
-{-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE OverloadedStrings #-}
 module Handlers where
 
 import Control.Applicative ((<|>))
@@ -13,6 +13,7 @@ import Data.Text.Lens
 import Data.Time
 import Data.String (IsString)
 import Network.HTTP.Req
+import System.Exit
 
 getEvents :: ByteString -> String -> String -> Bool -> IO ()
 getEvents token f t pretty = do
@@ -80,7 +81,15 @@ getTimePeriod "" "" = (,) <$> getToday <*> getNext 1
 getTimePeriod "today" "" = (,) <$> getToday <*> getNext 1
 getTimePeriod "thisweek" "" = (,) <$> getToday <*> getNext 8
 getTimePeriod "lastweek" "" = (,) <$> getNext (-8) <*> getToday
-getTimePeriod f t = return (f, t)
+getTimePeriod f "" = case parseDay f of
+    Just d -> let d' = addDays 1 d in return (show d, show d')
+    Nothing -> die "Unable to parse args"
+getTimePeriod f t = case (parseDay f, parseDay t) of
+    (Just f', Just t') -> return (f, show (addDays 1 t'))
+    _ -> die "Unable to parse args"
+
+parseDay :: String -> Maybe Day
+parseDay = parseTimeM True defaultTimeLocale "%F"
 
 instance MonadHttp IO where
     handleHttpException = throwIO
