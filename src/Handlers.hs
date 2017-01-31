@@ -14,8 +14,8 @@ import Data.Time
 import Data.String (IsString)
 import Network.HTTP.Req
 
-getEvents :: ByteString -> String -> String -> IO ()
-getEvents token f t = do
+getEvents :: ByteString -> String -> String -> Bool -> IO ()
+getEvents token f t pretty = do
     let opts = oAuth2Bearer token
             <> "singleEvents" =: ("true" :: String)
             <> "orderBy" =: ("startTime" :: String)
@@ -24,7 +24,7 @@ getEvents token f t = do
     res <- req GET eventUrl NoReqBody bsResponse opts
     let b = responseBody res
         es = b ^. key "items" . _Array <&> (toEvent . (^. _Object))
-    mapM_ (putStrLn . formatEvent False) es
+    mapM_ (putStrLn . formatEvent pretty) es
 
 eventUrl = https "www.googleapis.com" /: "calendar" /: "v3"
              /: "calendars" /: "primary" /: "events"
@@ -74,6 +74,13 @@ getNext dt = do
     today <- localDay . zonedTimeToLocalTime <$> getZonedTime
     let next = addDays dt today
     return $ formatTime defaultTimeLocale "%F" next
+
+getTimePeriod :: String -> String -> IO (String, String)
+getTimePeriod "" "" = (,) <$> getToday <*> getNext 1
+getTimePeriod "today" "" = (,) <$> getToday <*> getNext 1
+getTimePeriod "thisweek" "" = (,) <$> getToday <*> getNext 8
+getTimePeriod "lastweek" "" = (,) <$> getNext (-8) <*> getToday
+getTimePeriod f t = return (f, t)
 
 instance MonadHttp IO where
     handleHttpException = throwIO
