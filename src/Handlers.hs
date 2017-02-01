@@ -1,10 +1,12 @@
+{-# LANGUAGE DuplicateRecordFields #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE OverloadedStrings #-}
 module Handlers where
 
 import Control.Applicative ((<|>))
 import Control.Exception (throwIO)
-import Control.Lens
+import Control.Lens ((^.), (^?), (<&>), ix, IxValue, Index, Ixed)
+import Data.Aeson
 import Data.Aeson.Lens
 import Data.ByteString.Char8 (ByteString)
 import Data.Maybe (fromJust)
@@ -26,6 +28,16 @@ getEvents token f t pretty = do
     let b = responseBody res
         es = b ^. key "items" . _Array <&> (toEvent . (^. _Object))
     mapM_ (putStrLn . formatEvent pretty) es
+
+createEvent :: ByteString
+            -> String -> String -> String -> String -> String -> IO ()
+createEvent token sm ds lc st en = do
+    let opts = oAuth2Bearer token
+        f = st ++ ":00+09:00"
+        t = en ++ ":00+09:00"
+        ev = EventSource sm ds lc f t
+    res <- req POST eventUrl (ReqBodyJson ev) bsResponse opts
+    putStrLn . formatEvent False . toEvent $ responseBody res ^. _Object
 
 eventUrl = https "www.googleapis.com" /: "calendar" /: "v3"
              /: "calendars" /: "primary" /: "events"
@@ -67,6 +79,23 @@ formatEvent pretty (Event sm ds lc st en)
         l = fromJust $ lc <|> Just "None"
         d = fromJust $ ds <|> Just "None"
 
+data EventSource = EventSource
+    { summary :: String
+    , description :: String
+    , location :: String
+    , start :: String
+    , end :: String
+    }
+
+instance ToJSON EventSource where
+    toJSON (EventSource sm ds lc st en) =
+        object [ "summary" .= sm
+               , "description" .= ds
+               , "location" .= lc
+               , "start" .= object ["dateTime" .= st]
+               , "end" .= object ["dateTime" .= en]
+               ]
+
 getToday :: IO String
 getToday = formatTime defaultTimeLocale "%F" <$> getZonedTime
 
@@ -85,7 +114,7 @@ getTimePeriod f "" = case parseDay f of
     Just d -> let d' = addDays 1 d in return (show d, show d')
     Nothing -> die "Unable to parse args"
 getTimePeriod f t = case (parseDay f, parseDay t) of
-    (Just f', Just t') -> return (f, show (addDays 1 t'))
+    (Just _, Just t') -> return (f, show (addDays 1 t'))
     _ -> die "Unable to parse args"
 
 parseDay :: String -> Maybe Day

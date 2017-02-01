@@ -23,6 +23,11 @@ main = do
          List from to pretty -> do
              (f, t) <- getTimePeriod from to
              getEvents token f t pretty
+         New sm ds lc "" st en -> createEvent token sm ds lc st en
+         New sm ds lc dt st en -> do
+             let st' = dt ++ "T" ++ st
+                 en' = dt ++ "T" ++ en
+             createEvent token sm ds lc st' en'
 
     where
         optsParser =
@@ -30,14 +35,38 @@ main = do
                  (fullDesc <>
                      header "sch - A CLI client of Google Calendar")
         programOptions = 
-            Opts <$> hsubparser listCommand
+            Opts <$> hsubparser (listCommand <> newCommand)
         listCommand =
             command "ls" (info listOptions (progDesc "Show schedule"))
         listOptions =
-            List <$> strArgument (metavar "date" <> help "From" <> value "")
-                 <*> strArgument (metavar "date" <> help "To" <> value "")
+            List <$> strArgument (metavar "date (e.g. today, thisweek, lastweek, YYYY-MM-DD)" <> help "From" <> value "")
+                 <*> strArgument (metavar "date (e.g. YYYY-MM-DD)" <> help "To" <> value "")
                  <*> switch (help "Pretty Print" <> short 'p' <> long "pretty")
+        newCommand =
+            command "new" (info newOptions (progDesc "Create schedule"))
+        newOptions =
+            New <$> strArgument (metavar "Summary")
+                <*> strOption (metavar "Description"
+                              <> long "des"
+                              <> value ""
+                              )
+                <*> strOption (metavar "Location"
+                              <> long "loc"
+                              <> value ""
+                              )
+                <*> strArgument (metavar "Date" <> value "")
+                <*> strOption (metavar "Start"
+                              <> short 'f'
+                              <> long "from"
+                              <> value "00:00"
+                              )
+                <*> strOption (metavar "End"
+                              <> short 't'
+                              <> long "to"
+                              <> value "23:59"
+                              )
 
 data Opts = Opts { optCommand :: !Command }
 
 data Command = List String String Bool
+             | New String String String String String String
