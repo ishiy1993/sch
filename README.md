@@ -1,7 +1,7 @@
 # A CLI client of Google Calendar
 ## Features
 
-+ Create a event
++ Create an event
 + Check events in a given time period
 
 ## Install and Setup
@@ -11,7 +11,7 @@
 0. Clone this repo, then `stack install`
 
 ## Usage
-Create a event
+Create an event
 
 ```
 $ sch new "Go shopping" 2017-02-01 -f 13:00 -t 15:00
