@@ -1,3 +1,4 @@
+{-# LANGUAGE DataKinds #-}
 {-# LANGUAGE DuplicateRecordFields #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE OverloadedStrings #-}
@@ -39,6 +40,7 @@ createEvent token sm ds lc st en = do
     res <- req POST eventUrl (ReqBodyJson ev) bsResponse opts
     putStrLn . formatEvent False . toEvent $ responseBody res ^. _Object
 
+eventUrl :: Url 'Https
 eventUrl = https "www.googleapis.com" /: "calendar" /: "v3"
              /: "calendars" /: "primary" /: "events"
 
