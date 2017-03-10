@@ -1,10 +1,12 @@
 module Main where
 
 import Data.Monoid ((<>))
+import Data.Time (getZonedTime)
 import Network.Google.OAuth2
 import Options.Applicative
 import System.Directory (getHomeDirectory)
 import System.Environment
+import System.Exit (die)
 import System.FilePath ((</>))
 
 import Handlers
@@ -21,8 +23,10 @@ main = do
     opts <- execParser optsParser
     case optCommand opts of
          List from to pretty -> do
-             (f, t) <- getTimePeriod from to
-             getEvents token f t pretty
+             now <- getZonedTime
+             case getTimePeriod now from to of
+                  Just (f, t) -> getEvents token f t pretty
+                  Nothing -> die "Unable to parse args"
          New sm ds lc "" st en -> createEvent token sm ds lc st en
          New sm ds lc dt st en -> do
              let st' = dt ++ "T" ++ st

@@ -26,6 +26,7 @@ library
                      , text
                      , time
                      , unordered-containers
+                     , vector
   default-language:    Haskell2010
 
 executable sch
@@ -37,6 +38,7 @@ executable sch
                      , filepath
                      , google-oauth2-for-cli
                      , optparse-applicative
+                     , time
                      , sch
   default-language:    Haskell2010
 

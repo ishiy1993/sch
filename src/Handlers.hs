@@ -10,25 +10,30 @@ import Control.Lens ((^.), (^?), (<&>), ix, IxValue, Index, Ixed)
 import Data.Aeson
 import Data.Aeson.Lens
 import Data.ByteString.Char8 (ByteString)
-import Data.Maybe (fromJust)
+import Data.Maybe (fromJust, fromMaybe)
 import Data.Monoid ((<>))
 import Data.Text.Lens
 import Data.Time
 import Data.String (IsString)
+import Data.Vector (Vector)
 import Network.HTTP.Req
-import System.Exit
 
-getEvents :: ByteString -> String -> String -> Bool -> IO ()
+getEvents :: ByteString -> ZonedTime -> ZonedTime -> Bool -> IO ()
 getEvents token f t pretty = do
-    let opts = oAuth2Bearer token
+    es <- queryEvents token f t
+    mapM_ (putStrLn . formatEvent pretty) es
+
+queryEvents :: ByteString -> ZonedTime -> ZonedTime -> IO Events
+queryEvents token f t = do
+    let showTime = formatTime defaultTimeLocale "%FT%T%z"
+        opts = oAuth2Bearer token
             <> "singleEvents" =: ("true" :: String)
             <> "orderBy" =: ("startTime" :: String)
-            <> "timeMin" =: (f ++ "T00:00:00+09:00")
-            <> "timeMax" =: (t ++ "T00:00:00+09:00")
+            <> "timeMin" =: showTime f
+            <> "timeMax" =: showTime t
     res <- req GET eventUrl NoReqBody bsResponse opts
     let b = responseBody res
-        es = b ^. key "items" . _Array <&> (toEvent . (^. _Object))
-    mapM_ (putStrLn . formatEvent pretty) es
+    return $ b ^. key "items" . _Array <&> (toEvent . (^. _Object))
 
 createEvent :: ByteString
             -> String -> String -> String -> String -> String -> IO ()
@@ -73,13 +78,13 @@ formatEvent pretty (Event sm ds lc st en)
                        ]
     | otherwise = unwords [ t, sm, l, d]
     where
-        sd = take 10 st
-        ed = take 10 en
-        s = take 5 $ drop 11 st
-        e = take 5 $ drop 11 en
-        t = sd ++ " " ++ s ++ " - " ++ ed ++ " " ++ e
-        l = fromJust $ lc <|> Just "None"
-        d = fromJust $ ds <|> Just "None"
+        szt = fromJust $ parseZonedTime st
+        ezt = fromJust $ parseZonedTime en
+        t = formatTimePeriod szt ezt
+        l = fromMaybe "None" lc
+        d = fromMaybe "None" ds
+
+type Events = Vector Event
 
 data EventSource = EventSource
     { summary :: String
@@ -98,29 +103,51 @@ instance ToJSON EventSource where
                , "end" .= object ["dateTime" .= en]
                ]
 
-getToday :: IO String
-getToday = formatTime defaultTimeLocale "%F" <$> getZonedTime
+toToday :: ZonedTime -> ZonedTime
+toToday (ZonedTime lt tz) = mkZonedTime tz ld
+    where ld = localDay lt
 
-getNext :: Integer -> IO String
-getNext dt = do
-    today <- localDay . zonedTimeToLocalTime <$> getZonedTime
-    let next = addDays dt today
-    return $ formatTime defaultTimeLocale "%F" next
+toNext :: ZonedTime -> Integer -> ZonedTime
+toNext (ZonedTime lt' tz) dt = mkZonedTime tz ld
+    where ld = addDays dt $ localDay lt'
 
-getTimePeriod :: String -> String -> IO (String, String)
-getTimePeriod "" "" = (,) <$> getToday <*> getNext 1
-getTimePeriod "today" "" = (,) <$> getToday <*> getNext 1
-getTimePeriod "thisweek" "" = (,) <$> getToday <*> getNext 8
-getTimePeriod "lastweek" "" = (,) <$> getNext (-8) <*> getToday
-getTimePeriod f "" = case parseDay f of
-    Just d -> let d' = addDays 1 d in return (show d, show d')
-    Nothing -> die "Unable to parse args"
-getTimePeriod f t = case (parseDay f, parseDay t) of
-    (Just _, Just t') -> return (f, show (addDays 1 t'))
-    _ -> die "Unable to parse args"
+mkZonedTime :: TimeZone -> Day -> ZonedTime
+mkZonedTime tz d = ZonedTime lt tz
+    where lt = LocalTime d midnight
+
+getTimePeriod :: ZonedTime -> String -> String
+              -> Maybe (ZonedTime, ZonedTime)
+getTimePeriod now "" "" =
+    Just (toToday now, toNext now 1)
+getTimePeriod now "today" "" =
+    Just (toToday now, toNext now 1)
+getTimePeriod now "thisweek" "" =
+    Just (toToday now, toNext now 8)
+getTimePeriod now "lastweek" "" =
+    Just (toNext now (-8), toToday now)
+getTimePeriod now f "" = do
+    d <- parseDay f
+    let tz = zonedTimeZone now
+        from = mkZonedTime tz d
+        to = toNext from 1
+    return (from, to)
+getTimePeriod now f t = do
+    d1 <- parseDay f
+    d2 <- parseDay t
+    let tz = zonedTimeZone now
+        from = mkZonedTime tz d1
+        to = mkZonedTime tz d2
+    return (from, to)
 
 parseDay :: String -> Maybe Day
 parseDay = parseTimeM True defaultTimeLocale "%F"
+
+parseZonedTime :: String -> Maybe ZonedTime
+parseZonedTime = parseTimeM True defaultTimeLocale "%FT%T%z"
+
+formatTimePeriod :: ZonedTime -> ZonedTime -> String
+formatTimePeriod szt ezt = unwords [showTime szt, "-", showTime ezt]
+    where showTime = formatTime defaultTimeLocale "%F %R"
 
 instance MonadHttp IO where
     handleHttpException = throwIO
