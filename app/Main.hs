@@ -10,6 +10,7 @@ import System.Exit (die)
 import System.FilePath ((</>))
 
 import Handlers
+import Utils
 
 main :: IO ()
 main = do
@@ -51,7 +52,8 @@ main = do
         listCommand =
             command "ls" (info listOptions (progDesc "Show schedule"))
         listOptions =
-            List <$> strArgument (metavar "date (e.g. today, thisweek, lastweek, YYYY-MM-DD)" <> help "From" <> value "")
+            List <$> strArgument (metavar "date (e.g. today, thisweek, lastweek, YYYY-MM-DD)"
+                                 <> help "From" <> value "")
                  <*> strArgument (metavar "date (e.g. YYYY-MM-DD)" <> help "To" <> value "")
                  <*> switch (help "Pretty Print" <> short 'p' <> long "pretty")
         newCommand =
