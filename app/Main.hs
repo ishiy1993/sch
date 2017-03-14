@@ -1,7 +1,7 @@
 module Main where
 
 import Data.Monoid ((<>))
-import Data.Time (getZonedTime)
+import Data.Time (getZonedTime, getCurrentTimeZone)
 import Network.Google.OAuth2
 import Options.Applicative
 import System.Directory (getHomeDirectory)
@@ -27,11 +27,19 @@ main = do
              case getTimePeriod now from to of
                   Just (f, t) -> getEvents token f t pretty
                   Nothing -> die "Unable to parse args"
-         New sm ds lc "" st en -> createEvent token sm ds lc st en
+         New sm ds lc "" st en -> do
+             tz <- getCurrentTimeZone
+             case (parseDateTime tz st, parseDateTime tz en) of
+                 (Just st', Just en') -> createEvent token sm ds lc st' en'
+                 _ -> die "Unable to parse args"
          New sm ds lc dt st en -> do
-             let st' = dt ++ "T" ++ st
-                 en' = dt ++ "T" ++ en
-             createEvent token sm ds lc st' en'
+             tz <- getCurrentTimeZone
+             case (parseDay dt, parseTimeOfDay st, parseTimeOfDay en) of
+                 (Just d, Just s, Just e) -> do
+                     let st' = mkZonedTime tz d s
+                         en' = mkZonedTime tz d e
+                     createEvent token sm ds lc st' en'
+                 _ -> die "Unable to parse args"
 
     where
         optsParser =
