@@ -1,13 +1,16 @@
 module Main where
 
 import Data.Monoid ((<>))
+import Data.Time (getZonedTime, getCurrentTimeZone)
 import Network.Google.OAuth2
 import Options.Applicative
 import System.Directory (getHomeDirectory)
 import System.Environment
+import System.Exit (die)
 import System.FilePath ((</>))
 
 import Handlers
+import Utils
 
 main :: IO ()
 main = do
@@ -21,13 +24,23 @@ main = do
     opts <- execParser optsParser
     case optCommand opts of
          List from to pretty -> do
-             (f, t) <- getTimePeriod from to
-             getEvents token f t pretty
-         New sm ds lc "" st en -> createEvent token sm ds lc st en
+             now <- getZonedTime
+             case getTimePeriod now from to of
+                  Just (f, t) -> getEvents token f t pretty
+                  Nothing -> die "Unable to parse args"
+         New sm ds lc "" st en -> do
+             tz <- getCurrentTimeZone
+             case (parseDateTime tz st, parseDateTime tz en) of
+                 (Just st', Just en') -> createEvent token sm ds lc st' en'
+                 _ -> die "Unable to parse args"
          New sm ds lc dt st en -> do
-             let st' = dt ++ "T" ++ st
-                 en' = dt ++ "T" ++ en
-             createEvent token sm ds lc st' en'
+             tz <- getCurrentTimeZone
+             case (parseDay dt, parseTimeOfDay st, parseTimeOfDay en) of
+                 (Just d, Just s, Just e) -> do
+                     let st' = mkZonedTime tz d s
+                         en' = mkZonedTime tz d e
+                     createEvent token sm ds lc st' en'
+                 _ -> die "Unable to parse args"
 
     where
         optsParser =
@@ -39,7 +52,8 @@ main = do
         listCommand =
             command "ls" (info listOptions (progDesc "Show schedule"))
         listOptions =
-            List <$> strArgument (metavar "date (e.g. today, thisweek, lastweek, YYYY-MM-DD)" <> help "From" <> value "")
+            List <$> strArgument (metavar "date (e.g. today, thisweek, lastweek, YYYY-MM-DD)"
+                                 <> help "From" <> value "")
                  <*> strArgument (metavar "date (e.g. YYYY-MM-DD)" <> help "To" <> value "")
                  <*> switch (help "Pretty Print" <> short 'p' <> long "pretty")
         newCommand =
